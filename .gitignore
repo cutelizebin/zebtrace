@@ -1,0 +1,34 @@
+# Swift / Xcode build products and local state
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+dist/
+
+# Local machine files and credentials
+.DS_Store
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.pfx
+*.mobileprovision
+
+# Personal recordings must never enter the repository
+Recordings/
+recordings/
+*.m4a
+*.wav
+*.caf
+*.aac
+*.aif
+*.aiff
+*.flac
+*.mp3
+*.mp4
+*.mov
+*.ogg
+*.opus
+session.json

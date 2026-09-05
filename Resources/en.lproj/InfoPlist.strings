@@ -1,0 +1,3 @@
+/* Purpose strings shown in macOS privacy permission dialogs. */
+"NSMicrophoneUsageDescription" = "ZebTrace records your microphone only after you start recording and saves the audio in your chosen folder.";
+"NSAudioCaptureUsageDescription" = "ZebTrace records audio played by your Mac only after you start recording and saves it in your chosen folder.";

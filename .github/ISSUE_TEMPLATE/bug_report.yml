@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem without sharing private recordings.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe expected and actual behavior. Do not attach private recordings or personal session metadata.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, Mac architecture, ZebTrace version or commit, and input/output device types.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted error details
+      description: Remove usernames, file paths, meeting details, and other personal information.

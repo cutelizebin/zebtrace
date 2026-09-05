@@ -1,0 +1,152 @@
+name: Draft release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, for example v0.2.0
+        required: true
+        type: string
+      mode:
+        description: Preview is unnotarized; notarized requires Apple signing secrets
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - notarized
+
+permissions:
+  contents: read
+
+concurrency:
+  group: draft-release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate version tag and release mode
+        id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || github.ref_name }}
+          REQUESTED_MODE: ${{ inputs.mode || 'preview' }}
+        run: |
+          if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+            echo "Expected an existing semantic-version tag such as v0.2.0." >&2
+            exit 1
+          fi
+          case "$REQUESTED_MODE" in preview|notarized) ;; *) exit 1 ;; esac
+          git show-ref --verify --quiet "refs/tags/$REQUESTED_TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$REQUESTED_TAG^{commit}")"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
+          if [[ "$REQUESTED_TAG" != "v$VERSION" ]]; then
+            echo "Tag $REQUESTED_TAG does not match the application version $VERSION." >&2
+            exit 1
+          fi
+          printf 'tag=%s\nmode=%s\nversion=%s\n' "$REQUESTED_TAG" "$REQUESTED_MODE" "$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Import temporary signing credentials
+        if: steps.release.outputs.mode == 'notarized'
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          for NAME in APPLE_CERTIFICATE_P12_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_SPECIFIC_PASSWORD; do
+            if [[ -z "${!NAME}" ]]; then
+              echo "Missing required release secret: $NAME. Notarized mode cannot produce a preview instead." >&2
+              exit 1
+            fi
+          done
+          if [[ "$APPLE_SIGNING_IDENTITY" != "Developer ID Application: "* ]]; then
+            echo "APPLE_SIGNING_IDENTITY must be a Developer ID Application certificate name." >&2
+            exit 1
+          fi
+          SIGNING_KEYCHAIN="$RUNNER_TEMP/zebtrace-signing.keychain-db"
+          SIGNING_KEYCHAIN_PASSWORD=$(/usr/bin/openssl rand -base64 32)
+          echo "::add-mask::$SIGNING_KEYCHAIN_PASSWORD"
+          umask 077
+          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | /usr/bin/base64 --decode > "$RUNNER_TEMP/zebtrace-signing.p12"
+          /usr/bin/security create-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN"
+          /usr/bin/security set-keychain-settings -lut 7200 "$SIGNING_KEYCHAIN"
+          /usr/bin/security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN"
+          /usr/bin/security import "$RUNNER_TEMP/zebtrace-signing.p12" -k "$SIGNING_KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          /usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN" >/dev/null
+          /usr/bin/security list-keychains -d user -s "$SIGNING_KEYCHAIN"
+          /usr/bin/xcrun notarytool store-credentials zebtrace-release \
+            --keychain "$SIGNING_KEYCHAIN" --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+          rm -f "$RUNNER_TEMP/zebtrace-signing.p12"
+      - name: Test core behavior
+        run: make test
+      - name: Build Universal packages
+        id: package
+        env:
+          PACKAGE_MODE: ${{ steps.release.outputs.mode }}
+          APP_VERSION: ${{ steps.release.outputs.version }}
+          CODESIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARYTOOL_PROFILE: zebtrace-release
+          NOTARYTOOL_KEYCHAIN: ${{ runner.temp }}/zebtrace-signing.keychain-db
+        run: |
+          STEM="ZebTrace-$APP_VERSION-universal"
+          if [[ "$PACKAGE_MODE" == "notarized" ]]; then
+            make release-package
+          else
+            make package
+            STEM="$STEM-preview-unnotarized"
+          fi
+          printf 'directory=%s\n' "$PWD/dist/releases/$STEM" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ZebTrace-${{ steps.release.outputs.version }}-${{ steps.release.outputs.mode }}
+          path: ${{ steps.package.outputs.directory }}/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Create draft release with verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_MODE: ${{ steps.release.outputs.mode }}
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.directory }}
+        run: |
+          BODY_FILE="$RUNNER_TEMP/zebtrace-release-notes.md"
+          TITLE="ZebTrace $RELEASE_TAG"
+          EXTRA_ARGUMENTS=()
+          if [[ "$RELEASE_MODE" == "preview" ]]; then
+            TITLE="[UNNOTARIZED PREVIEW] $TITLE"
+            EXTRA_ARGUMENTS+=(--prerelease)
+            printf '%s\n\n' 'Unnotarized Universal preview. First launch may require manual approval in macOS Privacy & Security.' > "$BODY_FILE"
+            printf '%s\n\n' 'First try opening ZebTrace from Applications. If macOS blocks it and you have verified the official download, open System Settings → Privacy & Security → Open Anyway, then confirm Open. [Apple instructions](https://support.apple.com/en-us/102445).' >> "$BODY_FILE"
+          else
+            printf '%s\n\n' 'Universal build for Apple silicon and Intel Macs, signed with Developer ID and notarized by Apple.' > "$BODY_FILE"
+          fi
+          printf '%s\n\n' 'Open the DMG and drag ZebTrace.app into Applications, or extract the ZIP. No Homebrew, Swift, or Xcode is required to run it. Microphone and system audio permissions are requested when you start recording.' >> "$BODY_FILE"
+          printf '%s\n' 'SHA256SUMS covers the downloadable archives and PACKAGE-INFO.txt. This release remains a draft for maintainer review.' >> "$BODY_FILE"
+          gh release create "$RELEASE_TAG" "$PACKAGE_DIRECTORY"/*.zip "$PACKAGE_DIRECTORY"/*.dmg \
+            "$PACKAGE_DIRECTORY/SHA256SUMS" "$PACKAGE_DIRECTORY/PACKAGE-INFO.txt" \
+            --draft --verify-tag --title "$TITLE" --notes-file "$BODY_FILE" "${EXTRA_ARGUMENTS[@]}"
+      - name: Remove temporary signing credentials
+        if: always() && steps.release.outputs.mode == 'notarized'
+        run: |
+          if [[ -f "$RUNNER_TEMP/zebtrace-signing.keychain-db" ]]; then
+            /usr/bin/security delete-keychain "$RUNNER_TEMP/zebtrace-signing.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/zebtrace-signing.p12"

@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose an improvement to ZebTrace.
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What activity or workflow would this help you with?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior
+      description: Include how the feature should behave in the menu bar and any privacy implications.
+    validations:
+      required: true
