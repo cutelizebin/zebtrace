@@ -1,6 +1,6 @@
 # Open-source readiness
 
-This document records validation for the **0.4.2, build 9** preview, including local transcription, summaries, and the recording library. The earlier **v0.2.0** release contains recording only. Recording checks alone do not validate the inference path.
+This document records validation for the **0.4.3, build 10** preview, including local transcription, summaries, and the recording library. The earlier **v0.2.0** release contains recording only. Recording checks alone do not validate the inference path.
 
 The repository includes source, the MIT license, icon provenance, contribution and privacy documentation, build scripts, and CI configuration. Native inference sources and model files have pinned identities and separate license notices. Preview packaging uses ad-hoc signing; Developer ID signing and notarization remain an optional workflow requiring credentials and successful Apple validation.
 
@@ -38,7 +38,7 @@ Fake-provider tests can establish orchestration behavior; they cannot establish 
 
 ## ASR selection checks (2026-09-07)
 
-The 0.4.2 update passed **130 automated tests**, including selected-model readiness/preparation and model-file ownership. Both Whisper variants remain managed by the existing store; an uninstalled alternative does not block the selected pipeline. The updated ZIP was extracted and installed locally; the DMG was mounted read-only, verified and detached. Both passed the Universal app/helper checks.
+The 0.4.2 build 8 development update passed **130 automated tests**, including selected-model readiness/preparation and model-file ownership. Both Whisper variants remain managed by the existing store; an uninstalled alternative does not block the selected pipeline. The updated ZIP was extracted and installed locally; the DMG was mounted read-only, verified and detached. Both passed the Universal app/helper checks.
 
 A separate native model-picker probe passed 19 assertions in each of English and Simplified Chinese. It exercised the actual menu-item action through the owner callback, persisted selection and restoration, invalid selections, and recording/shutdown guards without starting downloads or inference. Window snapshots confirmed that a missing, unused alternative leaves the selected pipeline ready, while selecting that missing model enables the download action.
 
@@ -46,13 +46,15 @@ One existing microphone-only recording was reprocessed with full large-v3 Q5 in 
 
 ## Scene-independent recording checks (2026-09-07)
 
-A subsequent clarification removed scenario-specific transcript naming and made both summary prompts explicit about their speech-text evidence boundary. All **131 tests** passed, including a new integration test covering non-speech tone and digital silence in both output languages: empty ASR output skips summary inference and preserves the original audio and manifest bytes. This does not benchmark real sound-event recognition or guarantee that a model follows every prompt instruction. These changes are included in build 9; build 8 packages predate the clarification.
+A subsequent clarification removed scenario-specific transcript naming and made both summary prompts explicit about their speech-text evidence boundary. All **131 tests** passed, including a new integration test covering non-speech tone and digital silence in both output languages: empty ASR output skips summary inference and preserves the original audio and manifest bytes. This does not benchmark real sound-event recognition or guarantee that a model follows every prompt instruction. These changes are included in build 10; build 8 packages predate the clarification.
 
-## 0.4.2 build 9 release checks
+## 0.4.3 build 10 release checks
+
+The v0.4.2 tag was an unpublished release candidate. Its GitHub release job exposed a cancellation test that assumed an ordering between URLProtocol and URLSession delegate callbacks; no download was published from that tag. Version 0.4.3 carries the corrected test and retains the earlier tag without rewriting it.
 
 The final source passed **132 automated tests**, including crash-recovery cleanup that removes only recognized scratch directories and preserves unknown content and symbolic links. The publication scan found no personal audio, transcript files, local model weights, private workspace paths, or credential patterns in the source candidates. The release workflow includes version-specific bilingual notes and builds packages from the version tag; GitHub Actions and the release page record the remote outcome.
 
-The build 9 Universal package passed archive checksums and strict app/helper validation after ZIP extraction outside the checkout and read-only DMG mounting. Both architectures, macOS 14.2 deployment targets, localizations, signatures, and system-only dynamic dependencies were checked. The DMG was detached afterward. The app payload contains no personal recordings or model weights. These package checks do not establish notarization or Intel hardware inference quality.
+The build 10 Universal package passed archive checksums and strict app/helper validation after ZIP extraction outside the checkout and read-only DMG mounting. Both architectures, macOS 14.2 deployment targets, localizations, signatures, and system-only dynamic dependencies were checked. The DMG was detached afterward. The app payload contains no personal recordings or model weights. These package checks do not establish notarization or Intel hardware inference quality.
 
 ## Remaining hardware and distribution boundaries
 

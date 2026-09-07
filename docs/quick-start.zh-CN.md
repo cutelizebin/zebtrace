@@ -1,6 +1,6 @@
 # ZebTrace 使用指南
 
-ZebTrace 是一个极简 macOS 菜单栏录音工具，手动控制开始与暂停，分别保存系统声音和麦克风音轨。**[v0.4.2（build 9）预览版](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2)** 在早期 v0.2.0 录音版的基础上，新增录音资料库、本地转写与总结、模型与存储管理。
+ZebTrace 是一个极简 macOS 菜单栏录音工具，手动控制开始与暂停，分别保存系统声音和麦克风音轨。**[v0.4.3（build 10）预览版](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3)** 在早期 v0.2.0 录音版的基础上，新增录音资料库、本地转写与总结、模型与存储管理。
 
 录音不预设场景、用途或活动。用户手动开启录制期间，应用保存两路实际收到的音频，包括非语音声音和安静时段；是否有人说话不会决定是否录制。逐字稿与总结是识别出的语音所衍生的文字，不能代表所有声音或活动。
 
@@ -8,7 +8,7 @@ ZebTrace 是一个极简 macOS 菜单栏录音工具，手动控制开始与暂�
 
 运行打包好的应用只需要 **macOS 14.2 或更高版本**，不需要安装 Xcode、Swift、Python、Homebrew、FFmpeg 或 Ollama。安装包已包含本地推理引擎，模型由应用在首次使用时另行下载。Universal 包含 Intel 版本不代表本地推理已通过 Intel 真机验证。
 
-1. **[下载 ZebTrace v0.4.2（Universal DMG）](https://github.com/cutelizebin/zebtrace/releases/download/v0.4.2/ZebTrace-0.4.2-universal-preview-unnotarized.dmg)**。同一个安装包同时包含 Apple Silicon 和 Intel 原生版本；ZIP、校验和与版本说明见 [v0.4.2 发布页](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2)。
+1. **[下载 ZebTrace v0.4.3（Universal DMG）](https://github.com/cutelizebin/zebtrace/releases/download/v0.4.3/ZebTrace-0.4.3-universal-preview-unnotarized.dmg)**。同一个安装包同时包含 Apple Silicon 和 Intel 原生版本；ZIP、校验和与版本说明见 [v0.4.3 发布页](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3)。
 2. 打开 DMG，把 **ZebTrace.app** 拖入 **Applications（应用程序）**。
 3. 从“应用程序”打开 ZebTrace，在顶部菜单栏找到 **Z** 图标。
 

@@ -1,6 +1,6 @@
 # Security and privacy
 
-ZebTrace captures system playback and microphone input only after you explicitly start recording. Recordings and analysis results stay local; there is no account, analytics, or audio/text upload. Version 0.4.2 adds optional local transcription and summaries. The earlier v0.2.0 release is recording-only.
+ZebTrace captures system playback and microphone input only after you explicitly start recording. Recordings and analysis results stay local; there is no account, analytics, or audio/text upload. Version 0.4.3 adds optional local transcription and summaries. The earlier v0.2.0 release is recording-only.
 
 Audio and session metadata are stored in `~/Downloads/ZebTrace` by default, or in the folder you select through **选择保存位置…**. The app remembers and displays that location. A missing custom folder or unavailable disk causes an error instead of a silent fallback. Change locations after pausing; the app does not move or delete existing recordings. Recording recovery examines only the selected save folder, without automatically traversing previous default folders.
 

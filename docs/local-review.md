@@ -1,6 +1,6 @@
 # Local recording review
 
-**[ZebTrace v0.4.2 (build 9)](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2)** includes local transcription, text summaries, the recording library, and model/storage management. These features were absent from the earlier v0.2.0 recording-only release. Review operates on a saved recording; recording remains manually controlled.
+**[ZebTrace v0.4.3 (build 10)](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3)** includes local transcription, text summaries, the recording library, and model/storage management. These features were absent from the earlier v0.2.0 recording-only release. Review operates on a saved recording; recording remains manually controlled.
 
 Recording does not depend on a setting, activity, or the presence of speech. During a manually started session, the capture pipeline saves the audio it receives; VAD and ASR operate only on saved audio for the optional review. They do not discard non-speech from the original recording. A transcript with no recognized words does not establish silence or an absence of activity. The current review does not reliably identify music or environmental sound events, and summaries must not infer a setting or activity from missing transcript content.
 
@@ -66,7 +66,7 @@ The catalog offers two speech models and shared summary/speech-detection models.
 | Summary | Qwen3 4B, Q4_K_M | 2,497,280,256 | Apache-2.0 |
 | Speech detection (internal) | Silero VAD v6.2.0 | 885,098 | MIT |
 
-**Qwen3 4B summarizes text; Qwen3-ASR is not included.** The two Whisper choices use the same bundled runtime and can differ in accuracy by recording. Proposed speaker separation, echo-aware association, and replaceable ASR backends are described in the [audio-understanding design](audio-understanding-design.md); they are not implemented features of v0.4.2.
+**Qwen3 4B summarizes text; Qwen3-ASR is not included.** The two Whisper choices use the same bundled runtime and can differ in accuracy by recording. Proposed speaker separation, echo-aware association, and replaceable ASR backends are described in the [audio-understanding design](audio-understanding-design.md); they are not implemented features of v0.4.3.
 
 Downloads pin repository revisions and expected sizes/SHA-256 hashes. HTTP Range requests allow retrying partial transfers; completed files are checked before use. A failed integrity check is an error, not a silent model substitution. The model manager can remove incomplete or damaged model files for a fresh download.
 

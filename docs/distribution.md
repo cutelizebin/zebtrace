@@ -1,6 +1,6 @@
 # Maintainer distribution guide
 
-ZebTrace targets macOS 14.2 and later. The current preview is **0.4.2, build 9**, including local transcription and summaries; the earlier **v0.2.0** download contains recording only. Current packaging produces a Universal app and two Universal inference helpers with `arm64` and `x86_64` slices. Building a preview requires no paid Apple Developer membership or signing credentials. Packaging creates local artifacts; publishing them is a separate step.
+ZebTrace targets macOS 14.2 and later. The current preview is **0.4.3, build 10**, including local transcription and summaries; the earlier **v0.2.0** download contains recording only. Current packaging produces a Universal app and two Universal inference helpers with `arm64` and `x86_64` slices. Building a preview requires no paid Apple Developer membership or signing credentials. Packaging creates local artifacts; publishing them is a separate step.
 
 Source builds require the documented Xcode/Swift toolchain and CMake (for example, `brew install cmake`). The first build fetches fixed upstream source revisions and verifies their archive hashes, then compiles the native helpers. This is a developer requirement, not an installation step for end users. See [inference-runtime.md](inference-runtime.md) for source pins, build controls, and licensing.
 

@@ -2,9 +2,9 @@
 
 Notable changes to ZebTrace are recorded here. Versions follow Semantic Versioning once releases are published.
 
-## 0.4.2 — 2026-09-07 (preview, build 9)
+## 0.4.3 — 2026-09-07 (preview, build 10)
 
-This public preview adds local recording review and a main window to v0.2.0. [Download and release notes](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2) · [English / 中文 release guide](docs/releases/0.4.2.md). Packages are ad-hoc signed and not notarized. Recording remains manual; local review is optional.
+This public preview adds local recording review and a main window to v0.2.0. [Download and release notes](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3) · [English / 中文 release guide](docs/releases/0.4.3.md). Packages are ad-hoc signed and not notarized. Recording remains manual; local review is optional.
 
 - Add a persistent ASR choice between Whisper large-v3-turbo Q5 and full large-v3 Q5. Prepare only the selected speech model and shared summary/VAD models; retain inventory, migration and removal for either choice. Model changes use separate ASR caches.
 - Keep recording reviews independent of assumed settings or activities; clarify that speech recognition does not control capture and missing recognized speech does not establish silence or an absence of activity.

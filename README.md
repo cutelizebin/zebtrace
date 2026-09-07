@@ -8,7 +8,7 @@ A minimal, open-source macOS menu bar app for keeping your personal activity con
 
 ZebTrace does not assume a particular setting or activity. While you choose to record, it saves the audio received from both sources, including non-speech sounds and quiet periods; speech detection does not control capture. Transcripts and summaries are optional text derived from recognized speech, not a complete account of every sound or activity. Music and environmental sound events are not currently identified reliably.
 
-**Latest preview: [0.4.2, build 9](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2).** This release adds a recording library, optional local transcription and summaries, and model/storage management to the earlier v0.2.0 recording-only release. There is no automatic recording, cloud account, audio upload, or telemetry. The app stays in the menu bar; **Open Main Window** opens a recording library with review, playback, model management, and storage settings. English and Simplified Chinese are supported. Transcription now offers Turbo and full large-v3 in model settings; see [ASR quality and model choices](docs/asr-quality.md).
+**Latest preview: [0.4.3, build 10](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3).** This release adds a recording library, optional local transcription and summaries, and model/storage management to the earlier v0.2.0 recording-only release. There is no automatic recording, cloud account, audio upload, or telemetry. The app stays in the menu bar; **Open Main Window** opens a recording library with review, playback, model management, and storage settings. English and Simplified Chinese are supported. Transcription now offers Turbo and full large-v3 in model settings; see [ASR quality and model choices](docs/asr-quality.md).
 
 See the [release readiness notes](docs/release-readiness.md) for validation and the [extensibility review](docs/extensibility-review.md) for boundaries and remaining extension work.
 
@@ -30,9 +30,9 @@ The longer-term direction is a personal context history with additional activity
 
 ## Download and install
 
-**[Download ZebTrace v0.4.2 for macOS (Universal DMG)](https://github.com/cutelizebin/zebtrace/releases/download/v0.4.2/ZebTrace-0.4.2-universal-preview-unnotarized.dmg)**
+**[Download ZebTrace v0.4.3 for macOS (Universal DMG)](https://github.com/cutelizebin/zebtrace/releases/download/v0.4.3/ZebTrace-0.4.3-universal-preview-unnotarized.dmg)**
 
-The same Universal app contains native Apple silicon and Intel versions. Visit the [v0.4.2 release page](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2) for the ZIP, checksums, and release notes, or browse [all releases](https://github.com/cutelizebin/zebtrace/releases).
+The same Universal app contains native Apple silicon and Intel versions. Visit the [v0.4.3 release page](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.3) for the ZIP, checksums, and release notes, or browse [all releases](https://github.com/cutelizebin/zebtrace/releases).
 
 Upgrading from v0.2.0: pause/save and quit ZebTrace before replacing the app in Applications. Existing audio remains in place; older session-folder names are supported. Model downloads are needed only when you choose to prepare or use local review, not for recording.
 
@@ -63,7 +63,7 @@ The default model combination uses **Whisper large-v3-turbo Q5** for transcripti
 
 **Storage & Settings → Cleanup and Uninstall…** removes managed model files and preferences, then moves the app to Trash. An explicit checkbox also includes recognized recordings and generated content. Unknown user files are preserved, and unavailable external drives must be reconnected for a full cleanup. Empty Trash to reclaim trashed files' space. Deleting only the app in Finder cannot invoke this cleanup; macOS retains control of permission history and system logs. See [local review usage and boundaries](docs/local-review.md).
 
-The review may contain recognition errors or unsupported summary claims. Source labels mean **microphone/system audio**, not named people. This version has no speaker identification, reliable speaker-turn separation, or acoustic echo cancellation, and playback does not mix the tracks. **Qwen3 4B is the text summary model; Qwen3-ASR is not integrated.** Check important details against the original audio. See the [audio-understanding design](docs/audio-understanding-design.md) for proposed work, and the [0.4.2 release notes](docs/releases/0.4.2.md) for this release.
+The review may contain recognition errors or unsupported summary claims. Source labels mean **microphone/system audio**, not named people. This version has no speaker identification, reliable speaker-turn separation, or acoustic echo cancellation, and playback does not mix the tracks. **Qwen3 4B is the text summary model; Qwen3-ASR is not integrated.** Check important details against the original audio. See the [audio-understanding design](docs/audio-understanding-design.md) for proposed work, and the [0.4.3 release notes](docs/releases/0.4.3.md) for this release.
 
 ## Developer requirements
 
@@ -123,7 +123,7 @@ New recordings use this layout:
         └── .zebtrace-analysis/              # Reusable processing cache
 ```
 
-Folder names use the recording start time in the local time zone and Gregorian calendar. If a name already exists, the next session uses `_02`, `_03`, and so on; existing sessions are never overwritten. The session UUID remains in `session.json` as `id`. The earlier v0.2.0 release used `yyyy-MM-dd/HH-mm-ss-<session UUID>/`; v0.4.2 also recognizes these folders in place for recovery, without automatically renaming or moving them.
+Folder names use the recording start time in the local time zone and Gregorian calendar. If a name already exists, the next session uses `_02`, `_03`, and so on; existing sessions are never overwritten. The session UUID remains in `session.json` as `id`. The earlier v0.2.0 release used `yyyy-MM-dd/HH-mm-ss-<session UUID>/`; v0.4.3 also recognizes these folders in place for recovery, without automatically renaming or moving them.
 
 Each recording session contains a JSON manifest and separate system/microphone audio segments. Use the manifest's timestamps when aligning the two sources; opening two audio files together does not automatically align them. Audio stays in normal files that can be copied, played, or deleted without ZebTrace.
 

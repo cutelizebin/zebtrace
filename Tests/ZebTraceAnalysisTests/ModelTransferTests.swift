@@ -71,9 +71,10 @@ final class ModelTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: fixture.partial), Data("ab".utf8))
     }
 
-    func testCancellationStopsRequestBeforeReturningAndRetainsResumableBytes() async throws {
+    func testCancellationClosesWriterAndRetainsResumableBytesForImmediateRetry() async throws {
+        let protocolStopped = expectation(description: "The URL protocol eventually stops loading")
         let fixture = try TransferFixture(prefix: "", response: .init(
-            status: 200, body: "abc", finishes: false))
+            status: 200, body: "abc", finishes: false, onStop: { protocolStopped.fulfill() }))
         defer { fixture.remove() }
         let prefixWritten = expectation(description: "The first body bytes reached the partial file")
         prefixWritten.assertForOverFulfill = false
@@ -86,9 +87,9 @@ final class ModelTransferTests: XCTestCase {
                 try await transfer.download { received in
                     if received == 3 { prefixWritten.fulfill() }
                 }
-                outcome.finish(cancelled: false, stopped: fixture.response.stopped)
+                outcome.finish(cancelled: false)
             } catch {
-                outcome.finish(cancelled: error is CancellationError, stopped: fixture.response.stopped)
+                outcome.finish(cancelled: error is CancellationError)
             }
         }
         defer { task.cancel() }
@@ -96,9 +97,19 @@ final class ModelTransferTests: XCTestCase {
         await fulfillment(of: [prefixWritten], timeout: 5)
         task.cancel()
         await fulfillment(of: [finished], timeout: 5)
-        guard let completion = outcome.value else { return }
-        XCTAssertTrue(completion.cancelled, "The caller must receive CancellationError.")
-        XCTAssertTrue(completion.stopped, "The URL loading task must stop before download returns.")
+        let cancelled = try XCTUnwrap(outcome.value)
+        XCTAssertTrue(cancelled, "The caller must receive CancellationError.")
+        XCTAssertEqual(try Data(contentsOf: fixture.partial), Data("abc".utf8))
+
+        // URLSession acknowledges cancellation through didCompleteWithError.
+        // URLProtocol.stopLoading can be observed later on another queue. Test
+        // our actual ownership guarantee instead of imposing callback ordering:
+        // even an injected late body callback cannot write through the old handle.
+        let callbackSession = URLSession(configuration: .ephemeral)
+        let callbackTask = callbackSession.dataTask(with: fixture.model.url)
+        defer { callbackSession.invalidateAndCancel() }
+        // This task is never resumed; calling the delegate directly uses no network.
+        transfer.urlSession(callbackSession, dataTask: callbackTask, didReceive: Data("x".utf8))
         XCTAssertEqual(try Data(contentsOf: fixture.partial), Data("abc".utf8))
 
         // A replacement transfer can immediately take ownership of the same
@@ -108,7 +119,9 @@ final class ModelTransferTests: XCTestCase {
         TransferURLProtocol.register(resumed, for: fixture.model.url)
         try await fixture.transfer().download { _ in }
         XCTAssertEqual(resumed.rangeHeader, "bytes=3-")
+        transfer.urlSession(callbackSession, dataTask: callbackTask, didReceive: Data("y".utf8))
         XCTAssertEqual(try Data(contentsOf: fixture.partial), Data("abcdef".utf8))
+        await fulfillment(of: [protocolStopped], timeout: 5)
     }
 }
 
@@ -154,8 +167,10 @@ private final class TransferResponse: @unchecked Sendable {
     private let lock = NSLock()
     private var receivedRange: String?
     private var didStop = false
+    private let onStop: @Sendable () -> Void
 
-    init(status: Int, headers: [String: String] = [:], body: String, finishes: Bool = true) {
+    init(status: Int, headers: [String: String] = [:], body: String, finishes: Bool = true,
+         onStop: @escaping @Sendable () -> Void = {}) {
         self.status = status
         var responseHeaders = headers
         // The cancellation fixture deliberately leaves its tiny body open.
@@ -165,30 +180,36 @@ private final class TransferResponse: @unchecked Sendable {
         }
         self.headers = responseHeaders
         self.body = Data(body.utf8); self.finishes = finishes
+        self.onStop = onStop
     }
 
     var rangeHeader: String? { lock.lock(); defer { lock.unlock() }; return receivedRange }
-    var stopped: Bool { lock.lock(); defer { lock.unlock() }; return didStop }
 
     func record(_ request: URLRequest) {
         lock.lock(); defer { lock.unlock() }
         receivedRange = request.value(forHTTPHeaderField: "Range")
     }
 
-    func stop() { lock.lock(); didStop = true; lock.unlock() }
+    func stop() {
+        lock.lock()
+        let alreadyStopped = didStop
+        didStop = true
+        lock.unlock()
+        if !alreadyStopped { onStop() }
+    }
 }
 
 private final class TransferOutcome: @unchecked Sendable {
     private let lock = NSLock()
-    private var completion: (cancelled: Bool, stopped: Bool)?
+    private var completion: Bool?
 
-    var value: (cancelled: Bool, stopped: Bool)? {
+    var value: Bool? {
         lock.lock(); defer { lock.unlock() }; return completion
     }
 
-    func finish(cancelled: Bool, stopped: Bool) {
+    func finish(cancelled: Bool) {
         lock.lock(); defer { lock.unlock() }
-        completion = (cancelled, stopped)
+        completion = cancelled
     }
 }
 
