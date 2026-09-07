@@ -16,22 +16,37 @@ EXECUTABLE="$EXECUTABLE_DIR/ZebTrace"
 test -x "$EXECUTABLE"
 test -s "$APP_PATH/Contents/Resources/AppIcon.icns"
 test -d "$APP_PATH/Contents/Resources/ZebTrace_ZebTraceCore.bundle"
+test -x "$APP_PATH/Contents/Helpers/whisper-cli"
+test -x "$APP_PATH/Contents/Helpers/llama-completion"
+test -s "$APP_PATH/Contents/Resources/InferenceRuntime/runtime-info.json"
+test -d "$APP_PATH/Contents/Resources/InferenceLicenses"
 /usr/bin/plutil -lint "$APP_PATH/Contents/Info.plist"
 DECLARED_MINIMUM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PATH/Contents/Info.plist")"
 if [[ ! "$DECLARED_MINIMUM" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     echo "Invalid minimum macOS version in the app Info.plist." >&2
     exit 1
 fi
-for LANGUAGE in en zh-Hans; do
+LOCALIZATION_INDEX=0
+while LANGUAGE="$(/usr/libexec/PlistBuddy -c "Print :CFBundleLocalizations:$LOCALIZATION_INDEX" "$APP_PATH/Contents/Info.plist" 2>/dev/null)"; do
+    if [[ ! "$LANGUAGE" =~ ^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$ ]]; then
+        echo "Invalid localization identifier in Info.plist: $LANGUAGE" >&2
+        exit 1
+    fi
     /usr/bin/plutil -lint "$APP_PATH/Contents/Resources/$LANGUAGE.lproj/InfoPlist.strings"
     CORE_STRINGS="$APP_PATH/Contents/Resources/ZebTrace_ZebTraceCore.bundle/$LANGUAGE.lproj/Localizable.strings"
-    if [[ "$LANGUAGE" == "zh-Hans" && ! -f "$CORE_STRINGS" ]]; then
+    if [[ ! -f "$CORE_STRINGS" ]]; then
         # SwiftPM normalizes localization directory names to lowercase.
-        CORE_STRINGS="$APP_PATH/Contents/Resources/ZebTrace_ZebTraceCore.bundle/zh-hans.lproj/Localizable.strings"
+        NORMALIZED_LANGUAGE="$(printf '%s' "$LANGUAGE" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+        CORE_STRINGS="$APP_PATH/Contents/Resources/ZebTrace_ZebTraceCore.bundle/$NORMALIZED_LANGUAGE.lproj/Localizable.strings"
     fi
     test -s "$CORE_STRINGS"
     /usr/bin/plutil -lint "$CORE_STRINGS"
+    LOCALIZATION_INDEX=$((LOCALIZATION_INDEX + 1))
 done
+if [[ "$LOCALIZATION_INDEX" -eq 0 ]]; then
+    echo "Info.plist must declare at least one CFBundleLocalizations entry." >&2
+    exit 1
+fi
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 expand_path() {

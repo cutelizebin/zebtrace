@@ -4,11 +4,13 @@
 
 [简体中文使用指南](docs/quick-start.zh-CN.md) · [Architecture](docs/architecture.md) · [Contributing](CONTRIBUTING.md)
 
-A minimal, open-source macOS menu bar app for keeping your personal activity context on your own Mac. This first demo starts with audio: manually record system playback and your microphone, then save both locally.
+A minimal, open-source macOS menu bar app for keeping your personal activity context on your own Mac. Record system playback and your microphone manually, then optionally transcribe and summarize a saved recording locally.
 
-**Status: early preview (0.2.0).** No automatic recording, transcription, cloud account, or telemetry. The app has a menu bar icon and no main window or Dock icon. English and Simplified Chinese are supported, with automatic system-language detection.
+ZebTrace does not assume a particular setting or activity. While you choose to record, it saves the audio received from both sources, including non-speech sounds and quiet periods; speech detection does not control capture. Transcripts and summaries are optional text derived from recognized speech, not a complete account of every sound or activity. Music and environmental sound events are not currently identified reliably.
 
-See the [release readiness notes](docs/release-readiness.md) for tested behavior and remaining hardware validation.
+**Latest preview: [0.4.2, build 9](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2).** This release adds a recording library, optional local transcription and summaries, and model/storage management to the earlier v0.2.0 recording-only release. There is no automatic recording, cloud account, audio upload, or telemetry. The app stays in the menu bar; **Open Main Window** opens a recording library with review, playback, model management, and storage settings. English and Simplified Chinese are supported. Transcription now offers Turbo and full large-v3 in model settings; see [ASR quality and model choices](docs/asr-quality.md).
+
+See the [release readiness notes](docs/release-readiness.md) for validation and the [extensibility review](docs/extensibility-review.md) for boundaries and remaining extension work.
 
 ## What the demo does
 
@@ -21,21 +23,25 @@ See the [release readiness notes](docs/release-readiness.md) for tested behavior
 - Choose a segment length of 1, 5, 10, 30, or 60 minutes; the app remembers it for future sessions.
 - Follow the system language or switch between English and Simplified Chinese from the menu.
 - Pause conservatively on sleep, audio device changes, capture failures, and low disk space (under 500 MB available).
+- Use **Recording Review** to transcribe and summarize a saved session, cancel processing, or browse, play, read, and copy results.
+- Optionally enable **Summarize After Saving** after downloading the local models; it is off by default.
 
-The longer-term direction is a personal context history with additional activity sources. Screen, browser, application activity, search, summaries, and transcription are outside this demo.
+The longer-term direction is a personal context history with additional activity sources. Screen, browser, and application-activity capture are outside this preview. Speaker separation and related-audio understanding are [design work](docs/audio-understanding-design.md), not features in this release.
 
 ## Download and install
 
-**[Download ZebTrace v0.2.0 for macOS (Universal DMG)](https://github.com/cutelizebin/zebtrace/releases/download/v0.2.0/ZebTrace-0.2.0-universal-preview-unnotarized.dmg)**
+**[Download ZebTrace v0.4.2 for macOS (Universal DMG)](https://github.com/cutelizebin/zebtrace/releases/download/v0.4.2/ZebTrace-0.4.2-universal-preview-unnotarized.dmg)**
 
-The same Universal app contains native Apple silicon and Intel versions. Visit the [v0.2.0 release page](https://github.com/cutelizebin/zebtrace/releases/tag/v0.2.0) for the ZIP, checksums, and release notes, or browse [all releases](https://github.com/cutelizebin/zebtrace/releases).
+The same Universal app contains native Apple silicon and Intel versions. Visit the [v0.4.2 release page](https://github.com/cutelizebin/zebtrace/releases/tag/v0.4.2) for the ZIP, checksums, and release notes, or browse [all releases](https://github.com/cutelizebin/zebtrace/releases).
+
+Upgrading from v0.2.0: pause/save and quit ZebTrace before replacing the app in Applications. Existing audio remains in place; older session-folder names are supported. Model downloads are needed only when you choose to prepare or use local review, not for recording.
 
 1. Open the DMG and drag **ZebTrace.app** into **Applications**.
 2. Open ZebTrace from Applications. It appears as a **Z** in the menu bar.
 3. Choose **Start Recording** and allow microphone and system audio access when macOS asks.
-4. Choose **Pause and Save**, then **Open Latest Recording** to listen to both tracks.
+4. Choose **Pause and Save**, then **Open Main Window** to browse the recording, listen to either original track, and optionally generate a review.
 
-You only need **macOS 14.2 or later**. **No Xcode, Swift installation, Homebrew, FFmpeg, account, or package-manager setup is required to run the app.** All runtime dependencies are Apple system frameworks and libraries. A ZIP and `SHA256SUMS` are provided as alternatives to the DMG.
+You only need **macOS 14.2 or later** to run a packaged app. **No Xcode, Swift installation, Python, Homebrew, FFmpeg, Ollama, or account is required.** The app bundles native inference helpers; model weights are downloaded separately on first use. A ZIP and `SHA256SUMS` are provided as alternatives to the DMG. Universal binaries do not establish that inference has been tested on Intel hardware.
 
 The current preview is **not notarized**. If macOS blocks its first launch and you trust the download's source, try opening it once, then use **System Settings → Privacy & Security → Open Anyway** and confirm **Open**. Managed Macs may restrict this option. See [Apple's instructions](https://support.apple.com/en-us/102445). A future Developer ID signed and notarized build will simplify this first-launch step.
 
@@ -43,11 +49,25 @@ The current preview is **not notarized**. If macOS blocks its first launch and y
 
 The default is **Language → Follow System**. The app checks macOS's preferred languages in order, uses English or Simplified Chinese when supported, and falls back to English otherwise. Chinese region/script variants select Simplified Chinese.
 
-Choose **English** or **简体中文** to override the system preference. App menu labels and status text update immediately, including while recording, and the selection persists across launches. macOS-owned permission dialogs and standard file-picker controls use macOS's app/system language rules and may require relaunching after a system-language change. Permission usage descriptions are bundled in both languages.
+Choose **English** or **简体中文** to override the system preference. App menus, library, and model labels update immediately, including while recording, and the selection persists across launches. Speech recognition detects the spoken language automatically; a review uses the UI language selected when processing starts for its summary. App-owned UI, errors, exported review text, and model prompts use localization resources. Underlying system/runtime diagnostics may remain in their original language. See [adding a language](docs/localization.md). macOS-owned permission dialogs and standard file-picker controls use macOS's app/system language rules and may require relaunching after a system-language change. Permission usage descriptions are bundled in both languages.
+
+## Local recording review
+
+Choose **Open Main Window**, select a saved recording, then **Generate Review**. The **Recording Review** menu also offers **Summarize Latest Recording** and **Summarize Another Recording…**. On first use, confirm the model download: **3,072,206,549 bytes (about 3.1 GB)**, shared across recordings in `Models/` under your selected save folder (default `~/Downloads/ZebTrace/Models`). Downloads use fixed revisions and SHA-256 checks, and can resume after cancellation or a network failure. Audio and text stay on the Mac.
+
+The default model combination uses **Whisper large-v3-turbo Q5** for transcription and **Qwen3 4B Q4** for summaries, with a small Silero speech-detection model included in the download. Transcription and summarization run sequentially after recording stops. **Summarize After Saving** is optional and off by default; only a successful manual **Pause and Save** triggers it. Starting recording, sleep, and quit cancel processing; quitting waits for the helper to stop. A processing failure does not affect recording.
+
+**Open Main Window** opens a date-grouped recording library. Select a session to read its rendered summary or timestamped transcript, listen to the original track segments, copy text, or remove generated content/recordings. Processing status and results stay tied to that session, including while another recording is being summarized. A saved transcript remains available when summarization fails. The native toolbar keeps recording close at hand; a compact bottom player handles audio, and secondary actions live in **More**. See the [interface design notes](docs/interface-design.md).
+
+**Settings → Models and Storage…** shows the available ASR and summary selections, download state, file sizes, model deletion, and inference memory state. Speech recognition offers Turbo and full large-v3; the full speech model is about **1.08 GB**, and its complete combination is about **3.6 GB**. Shared files are reused. Selection persists, affects future processing, and does not download weights or rewrite existing results. Preparation and readiness use the selected speech model together with the summary/VAD files; this preview does not offer an ASR-only download mode. Idle helpers exit and release their memory; downloaded files remain until explicitly deleted. Changing the save location verifies and moves shared models without overwriting conflicting files. Earlier recordings stay in their existing folders, listed in **Storage & Settings**. The old hidden model folder is migrated on upgrade.
+
+**Storage & Settings → Cleanup and Uninstall…** removes managed model files and preferences, then moves the app to Trash. An explicit checkbox also includes recognized recordings and generated content. Unknown user files are preserved, and unavailable external drives must be reconnected for a full cleanup. Empty Trash to reclaim trashed files' space. Deleting only the app in Finder cannot invoke this cleanup; macOS retains control of permission history and system logs. See [local review usage and boundaries](docs/local-review.md).
+
+The review may contain recognition errors or unsupported summary claims. Source labels mean **microphone/system audio**, not named people. This version has no speaker identification, reliable speaker-turn separation, or acoustic echo cancellation, and playback does not mix the tracks. **Qwen3 4B is the text summary model; Qwen3-ASR is not integrated.** Check important details against the original audio. See the [audio-understanding design](docs/audio-understanding-design.md) for proposed work, and the [0.4.2 release notes](docs/releases/0.4.2.md) for this release.
 
 ## Developer requirements
 
-Building from source requires Xcode **15.1+**, or compatible Command Line Tools with **Swift 5.9+** and a macOS **14.2+ SDK**. There are no third-party Swift package dependencies.
+Building from source requires Xcode **15.1+**, or compatible Command Line Tools with **Swift 5.9+** and a macOS **14.2+ SDK**, plus **CMake** (for example, `brew install cmake`). There are no third-party Swift package dependencies. The first app build needs internet access to fetch checksum-pinned whisper.cpp and llama.cpp sources; it then builds and bundles their native helpers. Model weights are not downloaded by the app build. See [inference runtime builds](docs/inference-runtime.md).
 
 ## Build and run
 
@@ -86,15 +106,24 @@ This runs `scripts/build-icon.sh` using macOS `sips` and `iconutil`. To use anot
 
 The default save folder is `~/Downloads/ZebTrace`. The menu shows the current location; **Choose Save Folder…** opens the native folder picker and saves your choice across launches. Folder changes are disabled during recording. Pause first, choose another folder, then start a new session there.
 
+New recordings use this layout:
+
 ```text
 ~/Downloads/ZebTrace/
+├── Models/                              # Shared downloaded models
 └── yyyy-MM-dd/
-    └── HH-mm-ss-<session UUID>/
+    └── yyyy-MM-dd_HH-mm-ss/
         ├── session.json
         ├── system-00001.m4a
         ├── microphone-00001.m4a
-        └── ...
+        ├── ...
+        ├── transcript.md / transcript.json  # After transcription
+        ├── transcription.json              # Session and content provenance
+        ├── summary.md / analysis.json       # After successful review
+        └── .zebtrace-analysis/              # Reusable processing cache
 ```
+
+Folder names use the recording start time in the local time zone and Gregorian calendar. If a name already exists, the next session uses `_02`, `_03`, and so on; existing sessions are never overwritten. The session UUID remains in `session.json` as `id`. The earlier v0.2.0 release used `yyyy-MM-dd/HH-mm-ss-<session UUID>/`; v0.4.2 also recognizes these folders in place for recovery, without automatically renaming or moving them.
 
 Each recording session contains a JSON manifest and separate system/microphone audio segments. Use the manifest's timestamps when aligning the two sources; opening two audio files together does not automatically align them. Audio stays in normal files that can be copied, played, or deleted without ZebTrace.
 
@@ -109,6 +138,7 @@ The version 1 manifest includes:
 | Fields | Meaning |
 | --- | --- |
 | `schemaVersion`, `id` | Data format version and session identifier |
+| `directoryName` (optional) | Session folder name captured at creation, used to validate the new layout even if the local time zone changes; absent in older manifests |
 | `startedAt`, `updatedAt`, `endedAt` | ISO 8601 session lifecycle timestamps |
 | `status`, `endReason` | Recording outcome and why the session ended |
 | `hostTimeOrigin`, `hostClockTicksPerSecond` | Shared monotonic clock origin and tick conversion |
@@ -117,7 +147,7 @@ The version 1 manifest includes:
 
 Chunk `startOffsetSeconds` values locate the tracks on the session timeline and preserve audio gaps. A gap greater than 100 ms or a format change starts a new segment. On the next launch after an unexpected exit, unfinished sessions in the currently selected save folder are marked `interrupted`; their last AAC segment may be unplayable. Longer segments increase the amount of audio exposed to this unfinished-file risk. This does not guarantee sample-perfect synchronization or recovery of an in-progress file.
 
-There is no automatic cleanup or application-level encryption. Stereo system output plus a mono microphone targets approximately **86 MB per hour**, with actual size depending on the devices and encoder. macOS backups or synchronization of your chosen folder may include the recordings; ZebTrace itself does not upload them. Headphones reduce the chance that the microphone captures system playback a second time; this demo does not perform echo cancellation or mix the tracks.
+Cleanup is manual and there is no application-level encryption. Stereo system output plus a mono microphone targets approximately **86 MB per hour**, with actual size depending on the devices and encoder. macOS backups or synchronization of your chosen folder may include the recordings; ZebTrace itself does not upload them. Headphones reduce the chance that the microphone captures system playback a second time; this demo does not perform echo cancellation or mix the tracks.
 
 ## Permissions and troubleshooting
 
@@ -134,17 +164,19 @@ For a quick segment-rotation check, select **1 minute** before starting, record 
 ## Repository layout
 
 ```text
-Sources/ZebTrace/       Menu bar app and recording lifecycle controls
-Sources/ZebTraceCore/   Capture, persistence, language preferences, and localized resources
-Tests/                  Automated tests for core behavior
-Resources/              Icon source, ICNS, app metadata, and signing entitlements
-scripts/                App/icon builds, launch, checks, and local install commands
-.github/                CI and contribution templates
-docs/                   Architecture and design boundaries
+Sources/ZebTrace/         Menu bar app, recording library, models, storage, and lifecycle controls
+Sources/ZebTraceCore/     Capture, persistence, language preferences, and resources
+Sources/ZebTraceAnalysis/ Local model management, providers, transcript, and summary pipeline
+Tools/ZebTraceAnalyze/    Developer command-line analysis harness
+Tests/                   Automated tests with isolated fixtures
+Resources/               Icon source, ICNS, app metadata, and signing entitlements
+scripts/                 App/runtime/icon builds, packaging, checks, and local install
+.github/                 CI and contribution templates
+docs/                    Architecture, local review, and distribution boundaries
 ```
 
 See the [architecture notes](docs/architecture.md) for the recording boundaries and lifecycle, [CONTRIBUTING.md](CONTRIBUTING.md) for development and review expectations, and [SECURITY.md](SECURITY.md) for privacy and vulnerability reporting. Build and test results are available in [GitHub Actions](https://github.com/cutelizebin/zebtrace/actions).
 
 ## License
 
-[MIT](LICENSE). Copyright © 2026 ZebTrace contributors.
+[MIT](LICENSE). Copyright © 2026 ZebTrace contributors. Bundled inference runtimes and downloaded model weights retain their own licenses and notices; see [local review](docs/local-review.md#models-and-licenses) and [runtime provenance](docs/inference-runtime.md).

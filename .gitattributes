@@ -1,0 +1,2 @@
+# Unified patches represent blank context lines with a single space.
+scripts/patches/*.patch whitespace=-blank-at-eol,-blank-at-eof

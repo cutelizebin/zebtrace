@@ -97,10 +97,12 @@ ZebTrace $VERSION — macOS $MINIMUM_MACOS or later / 或更高版本
 Drag ZebTrace.app to Applications, then open it from Applications.
 Start recording from the menu bar and allow microphone/system audio when asked.
 No Homebrew, Swift, Xcode, or command-line setup is needed to run the app.
+Recording Review downloads about 3.1 GB of models once, then transcribes and summarizes locally.
 
 将 ZebTrace.app 拖入 Applications，然后从“应用程序”打开。
 从菜单栏开始记录，并按系统提示允许麦克风和系统声音访问。
 运行应用无需安装 Homebrew、Swift 或 Xcode。
+从“录音回顾”首次下载约 3.1 GB 模型，之后在本地转写与总结。
 EOF
 if [[ "$MODE" == "--preview" ]]; then
     cat >> "$DMG_ROOT/INSTALL.txt" <<'EOF'

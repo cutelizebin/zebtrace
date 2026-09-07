@@ -23,8 +23,35 @@ public final class RecordingLocation {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
+    /// Retain previous roots so data remains visible after changing destination.
+    public var knownDirectories: [URL] {
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let priorDefaults = [fallbackDirectory, downloads.appendingPathComponent("MyContext"),
+                             support.appendingPathComponent("MyContext/Recordings"),
+                             support.appendingPathComponent("ZebTrace/Recordings"),
+                             support.appendingPathComponent("ZebTrace")]
+            .filter { url in
+                if url == support.appendingPathComponent("ZebTrace") {
+                    let models = url.appendingPathComponent("Models")
+                    return ((try? FileManager.default.contentsOfDirectory(atPath: models.path)) ?? []).isEmpty == false
+                }
+                return FileManager.default.fileExists(atPath: url.path)
+            }.map(\.path)
+        let paths = [directory.path] + (defaults.stringArray(forKey: "storage.previousRoots") ?? []) + priorDefaults
+        var seen = Set<String>()
+        return paths.compactMap { path in
+            guard path.hasPrefix("/"), !path.contains("\0"), seen.insert(path).inserted else { return nil }
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+    }
+
+    public func validateSelection(_ directory: URL) throws { try validate(directory) }
+
     public func select(_ directory: URL) throws {
         try validate(directory)
+        let history = knownDirectories.map(\.path)
+        defaults.set(history, forKey: "storage.previousRoots")
         defaults.set(directory.standardizedFileURL.path, forKey: key)
     }
 

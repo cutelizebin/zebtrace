@@ -32,3 +32,16 @@ recordings/
 *.ogg
 *.opus
 session.json
+
+# Optional local model weights and private derived recording content
+*.gguf
+*.safetensors
+ggml-*.bin
+.zebtrace-analysis/
+transcript.md
+transcript.json
+summary.md
+analysis.json
+
+# Transcript provenance
+transcription.json

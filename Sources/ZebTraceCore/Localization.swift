@@ -4,6 +4,18 @@ public enum AppLanguage: String, CaseIterable {
     case system = "system"
     case english = "en"
     case chinese = "zh-Hans"
+
+    public var locale: Locale { Locale(identifier: rawValue) }
+    public var titleKey: String { "language.option." + rawValue }
+
+    /// Regional variants share the supported language's translations. Adding a
+    /// language requires its enum case and resources, without new UI branches.
+    public static func matching(_ identifier: String) -> AppLanguage? {
+        let normalized = identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+        if let exact = allCases.first(where: { $0 != .system && $0.rawValue.lowercased() == normalized }) { return exact }
+        let base = normalized.split(separator: "-").first
+        return allCases.first { $0 != .system && $0.rawValue.lowercased().split(separator: "-").first == base }
+    }
 }
 
 public final class LanguagePreferences {
@@ -23,11 +35,7 @@ public final class LanguagePreferences {
 
     static func resolveSystemLanguage(_ preferredLanguages: [String]) -> AppLanguage {
         for identifier in preferredLanguages {
-            switch identifier.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first {
-            case "zh": return .chinese
-            case "en": return .english
-            default: continue
-            }
+            if let language = AppLanguage.matching(identifier) { return language }
         }
         return .english
     }
@@ -54,7 +62,8 @@ public enum L10n {
         let resolved = language == .system
             ? LanguagePreferences.resolveSystemLanguage(Locale.preferredLanguages) : language
         let localized = localizedBundle(for: resolved)
-        let format = localized.localizedString(forKey: key, value: nil, table: "Localizable")
+        let fallback = localizedBundle(for: .english).localizedString(forKey: key, value: key, table: "Localizable")
+        let format = localized.localizedString(forKey: key, value: fallback, table: "Localizable")
         guard !arguments.isEmpty else { return format }
         return String(format: format, locale: Locale(identifier: resolved.rawValue), arguments: arguments)
     }

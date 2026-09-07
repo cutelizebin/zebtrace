@@ -1,0 +1,11 @@
+--- a/tools/completion/completion.cpp
++++ b/tools/completion/completion.cpp
+@@ -927,7 +927,7 @@
+ 
+         // end of generation
+         if (!embd.empty() && llama_vocab_is_eog(vocab, embd.back()) && !(params.interactive)) {
+-            LOG(" [end of text]\n");
++            LOG_DBG(" [end of text]\n");
+             break;
+         }
+ 

@@ -7,6 +7,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = RecordingPreferences()
     private let languagePreferences = LanguagePreferences()
     private lazy var controller = RecordingController(recordingLocation: recordingLocation, preferences: preferences)
+    private lazy var analysis = AnalysisController()
+    private lazy var workspace = WorkspaceController(analysis: analysis, location: recordingLocation,
+        toggleRecording: { [weak self] in self?.toggleRecording() },
+        chooseFolder: { [weak self] in self?.selectRecordingLocation() },
+        showError: { [weak self] message in self?.showError(message) })
+    private let mainWindowItem = NSMenuItem(title: "", action: #selector(openMainWindow), keyEquivalent: "0")
+    private var recordingStartTask: Task<Void, Never>?
+    private var recordingStartPending = false
+    private var sleeping = false
     private var statusItem: NSStatusItem?
     private let status = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let system = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -21,11 +30,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let permissions = NSMenuItem(title: "", action: #selector(openPermissions), keyEquivalent: "")
     private let quit = NSMenuItem(title: "", action: #selector(quitApp), keyEquivalent: "q")
     private let languageMenu = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let analysisStatus = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let analysisMenu = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let summarizeLatest = NSMenuItem(title: "", action: #selector(summarizeLatestRecording), keyEquivalent: "")
+    private let summarizeOther = NSMenuItem(title: "", action: #selector(summarizeOtherRecording), keyEquivalent: "")
+    private let cancelAnalysis = NSMenuItem(title: "", action: #selector(cancelAnalysisTask), keyEquivalent: "")
+    private let viewResult = NSMenuItem(title: "", action: #selector(viewLatestResult), keyEquivalent: "")
+    private let automaticSummary = NSMenuItem(title: "", action: #selector(toggleAutomaticSummary), keyEquivalent: "")
+    private let manageModels = NSMenuItem(title: "", action: #selector(manageAnalysisModels), keyEquivalent: "")
     private var languageChoices: [AppLanguage: NSMenuItem] = [:]
     private var localeObserver: NSObjectProtocol?
     private var segmentChoices: [RecordingSegmentLength: NSMenuItem] = [:]
     private var timer: Timer?
     private var sleepObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
     private var instanceLock: SingleInstanceLock?
     private var terminationPending = false
 
@@ -42,14 +60,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeRecording()
         do { try SessionWriter.recoverInterruptedSessions(at: recordingLocation.directory) }
         catch { showError(L10n.string("app.error.recovery", error.localizedDescription)) }
+        analysis.restoreLatestSessionIfNeeded(in: recordingLocation.directory)
+        workspace.onChange = { [weak self] in self?.refresh() }
+        workspace.onUninstall = { [weak self] in self?.instanceLock?.prepareForUninstall() }
+        workspace.migrateLegacyModels()
         refresh()
+        if CommandLine.arguments.contains("--open-library") { openMainWindow() }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openMainWindow(); return true
     }
 
     private func configureMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         menu.autoenablesItems = false
-        [status, system, microphone, detail, location].forEach { $0.isEnabled = false }
+        [status, system, microphone, detail, location, analysisStatus].forEach { $0.isEnabled = false }
+        mainWindowItem.target = self
+        menu.addItem(mainWindowItem)
+        menu.addItem(.separator())
         menu.addItem(status)
         menu.addItem(system)
         menu.addItem(microphone)
@@ -57,6 +87,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         toggle.target = self
         menu.addItem(toggle)
+        menu.addItem(.separator())
+        let analysisItems = NSMenu()
+        analysisItems.autoenablesItems = false
+        analysisItems.addItem(analysisStatus)
+        analysisItems.addItem(.separator())
+        [summarizeLatest, summarizeOther, cancelAnalysis, viewResult, automaticSummary, manageModels].forEach {
+            $0.target = self
+            analysisItems.addItem($0)
+        }
+        analysisMenu.submenu = analysisItems
+        menu.addItem(analysisMenu)
         menu.addItem(.separator())
         latest.target = self
         menu.addItem(latest)
@@ -98,6 +139,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func observeRecording() {
         controller.onChange = { [weak self] in self?.refresh() }
         controller.onError = { [weak self] message in self?.showError(message) }
+        controller.onSaved = { [weak self] directory in
+            guard let self, !self.terminationPending, !self.sleeping else { return }
+            self.analysis.didSave(directory)
+        }
+        analysis.onChange = { [weak self] in self?.refresh() }
+        analysis.onError = { [weak self] message in self?.showError(message) }
+        analysis.onResult = { [weak self] in self?.viewLatestResult() }
+        analysis.canAnalyze = { [weak self] in
+            guard let self else { return false }
+            return self.controller.canStartRecording && !self.recordingStartPending &&
+                !self.terminationPending && !self.sleeping && !self.workspace.isBusy
+        }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.controller.tick() }
         }
@@ -111,11 +164,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.controller.stop(reason: "systemSleep") }
+            Task { @MainActor in
+                guard let self else { return }
+                self.sleeping = true
+                self.recordingStartTask?.cancel()
+                self.analysis.cancel(reason: .sleep)
+                self.controller.stop(reason: "systemSleep")
+            }
+        }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sleeping = false
+                self?.refresh()
+            }
         }
     }
 
     private func refresh() {
+        mainWindowItem.title = L10n.string("workspace.open")
         latest.title = L10n.string("menu.latest")
         folder.title = L10n.string("menu.recordings")
         chooseLocation.title = L10n.string("menu.chooseLocation")
@@ -123,16 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit.title = L10n.string("menu.quit")
         languageMenu.title = L10n.string("menu.language")
         for (language, item) in languageChoices {
-            let key: String
-            switch language {
-            case .system: key = "language.system"
-            case .english: key = "language.english"
-            case .chinese: key = "language.chinese"
-            }
-            item.title = L10n.string(key)
+            item.title = L10n.string(language.titleKey)
             item.state = language == languagePreferences.selection ? .on : .off
         }
-        let iconState: StatusIcon.State
+        var iconState: StatusIcon.State
         switch controller.phase {
         case .idle:
             status.title = L10n.string(controller.lastDirectory == nil ? "status.idle" : "status.saved")
@@ -157,8 +219,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggle.title = L10n.string("menu.retry")
             iconState = .failed
         }
-        toggle.isEnabled = controller.phase != .stopping
-        chooseLocation.isEnabled = controller.canStartRecording
+        if controller.canStartRecording, analysis.isBusy || recordingStartPending { iconState = .busy }
+        if recordingStartPending { toggle.title = L10n.string("analysis.menu.startingRecording") }
+        toggle.isEnabled = controller.phase != .stopping && !recordingStartPending && !terminationPending && !sleeping && !workspace.isBusy
+        chooseLocation.isEnabled = !analysis.isBusy && controller.canStartRecording && !recordingStartPending && !terminationPending && !sleeping && !workspace.isBusy
         segmentLength.isEnabled = chooseLocation.isEnabled
         segmentLength.title = L10n.string("menu.segmentLength", preferences.segmentLength.title)
         for (length, item) in segmentChoices {
@@ -177,9 +241,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detail.isHidden = controller.lastError == nil
         detail.title = controller.lastError.map { String($0.prefix(60)) } ?? ""
         detail.toolTip = controller.lastError
+        refreshAnalysisMenu()
         statusItem?.button?.image = StatusIcon.image(for: iconState)
         statusItem?.button?.toolTip = status.title
         statusItem?.button?.setAccessibilityLabel(status.title)
+    }
+
+    private func refreshAnalysisMenu() {
+        let available = controller.canStartRecording && !recordingStartPending && !terminationPending && !sleeping && !workspace.isBusy
+        analysisMenu.title = analysis.menuTitle
+        analysisStatus.title = String(analysis.statusText.prefix(80))
+        analysisStatus.toolTip = analysis.statusText
+        summarizeLatest.title = L10n.string("analysis.menu.latest")
+        summarizeLatest.isEnabled = available && !analysis.isBusy && analysis.latestSessionDirectory != nil
+        summarizeOther.title = L10n.string("analysis.menu.other")
+        summarizeOther.isEnabled = available && !analysis.isBusy
+        cancelAnalysis.title = L10n.string("analysis.menu.cancel")
+        cancelAnalysis.isHidden = !analysis.isBusy
+        cancelAnalysis.isEnabled = analysis.isBusy && analysis.phase != .cancelling && !terminationPending
+        viewResult.title = L10n.string("workspace.viewRecording")
+        viewResult.isEnabled = (analysis.currentSessionDirectory ?? analysis.latestSessionDirectory ?? analysis.latestResult?.directory) != nil && !terminationPending
+        automaticSummary.title = L10n.string("analysis.menu.automatic")
+        automaticSummary.state = analysis.automaticEnabled ? .on : .off
+        automaticSummary.isEnabled = available && analysis.modelsReady && !analysis.isBusy
+        automaticSummary.toolTip = L10n.string("analysis.menu.automaticHint")
+        manageModels.title = L10n.string("analysis.menu.models")
+        manageModels.isEnabled = !terminationPending
+        workspace.refresh(state: LibraryLiveState(
+            recordingDirectory: controller.phase == .recording || controller.phase == .starting ? controller.lastDirectory : nil,
+            recordingTitle: toggle.title, recordingDetail: status.title,
+            isRecording: controller.phase == .recording || controller.phase == .starting || controller.phase == .stopping,
+            canToggleRecording: toggle.isEnabled, canAnalyze: available))
     }
 
     private func sourceTitle(_ source: AudioSource, name: String, capturing: Bool) -> String {
@@ -204,10 +296,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleRecording() {
         switch controller.phase {
-        case .idle, .failed: controller.start()
+        case .idle, .failed:
+            guard !recordingStartPending, !terminationPending, !sleeping, !workspace.isBusy else { return }
+            guard analysis.isBusy else { controller.start(); return }
+            recordingStartPending = true
+            refresh()
+            recordingStartTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.analysis.stopForRecording()
+                self.recordingStartPending = false
+                self.recordingStartTask = nil
+                guard !Task.isCancelled, !self.terminationPending, !self.sleeping else {
+                    self.refresh()
+                    return
+                }
+                self.controller.start()
+            }
         case .starting, .recording: controller.stop()
         case .stopping: break
         }
+    }
+
+    @objc private func summarizeLatestRecording() {
+        guard let directory = analysis.latestSessionDirectory else { return }
+        analysis.start(sessionDirectory: directory, manually: true)
+    }
+
+    @objc private func summarizeOtherRecording() {
+        guard controller.canStartRecording, !analysis.isBusy, !recordingStartPending else { return }
+        let panel = NSOpenPanel()
+        panel.title = L10n.string("analysis.folder.title")
+        panel.message = L10n.string("analysis.folder.message")
+        panel.prompt = L10n.string("analysis.folder.confirm")
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = recordingLocation.directory
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let selection = panel.url else { return }
+        analysis.start(sessionDirectory: selection, manually: true)
+    }
+
+    @objc private func cancelAnalysisTask() { analysis.cancel() }
+
+    @objc private func toggleAutomaticSummary() {
+        guard analysis.modelsReady, !analysis.isBusy, controller.canStartRecording else { return }
+        analysis.automaticEnabled.toggle()
+    }
+
+    @objc private func manageAnalysisModels() { workspace.openModels() }
+
+    @objc private func openMainWindow() { workspace.openLibrary() }
+
+    @objc private func viewLatestResult() {
+        workspace.openLibrary(selected: analysis.currentSessionDirectory ?? analysis.latestSessionDirectory ?? analysis.latestResult?.directory)
     }
 
     @objc private func openRecordings() {
@@ -226,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func selectRecordingLocation() {
-        guard controller.canStartRecording else { return }
+        guard controller.canStartRecording, !analysis.isBusy, !workspace.isBusy else { return }
         let panel = NSOpenPanel()
         panel.title = L10n.string("folder.title")
         panel.message = L10n.string("folder.message")
@@ -241,11 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let selection = panel.url,
               controller.canStartRecording else { return }
-        do {
-            try recordingLocation.select(selection)
-            refresh()
-            try SessionWriter.recoverInterruptedSessions(at: recordingLocation.directory)
-        } catch { showError(error.localizedDescription) }
+        workspace.changeLocation(to: selection)
     }
 
     @objc private func selectSegmentLength(_ sender: NSMenuItem) {
@@ -269,21 +408,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if terminationPending { return .terminateLater }
-        switch controller.phase {
-        case .idle, .failed: return .terminateNow
-        case .starting, .recording, .stopping:
-            terminationPending = true
-            controller.stop(reason: "appQuit") {
-                DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) }
+        if controller.canStartRecording && !analysis.isBusy && !recordingStartPending && !workspace.isBusy { return .terminateNow }
+        terminationPending = true
+        recordingStartTask?.cancel()
+        refresh()
+        Task { @MainActor in
+            // Finalize audio and stop/reap helpers before allowing the app to exit.
+            async let stoppedAnalysis: Void = analysis.shutdown()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                controller.stop(reason: "appQuit") {
+                    continuation.resume()
+                }
             }
-            return .terminateLater
+            await stoppedAnalysis
+            await workspace.waitForStorage()
+            sender.reply(toApplicationShouldTerminate: true)
         }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        instanceLock?.prepareForUninstall()
         if let localeObserver { NotificationCenter.default.removeObserver(localeObserver) }
         if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
     }
 
     private func showError(_ message: String, terminateAfterDismissal: Bool = false) {

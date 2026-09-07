@@ -13,6 +13,8 @@ final class RecordingController {
     private(set) var activity: [AudioSource: SourceActivity] = [:]
     var onChange: (() -> Void)?
     var onError: ((String) -> Void)?
+    /// Only a successful, explicit Pause and Save may trigger optional analysis.
+    var onSaved: ((URL) -> Void)?
     private let recordingLocation: RecordingLocation
     private let preferences: RecordingPreferences
     private let system: AudioCapturing = SystemAudioCapture()
@@ -20,6 +22,7 @@ final class RecordingController {
     private var pipeline: RecordingPipeline?
     private var attempt: UUID?
     private var stopCompletions: [() -> Void] = []
+    private var notifySavedAfterStop = false
 
     var canStartRecording: Bool { phase == .idle || phase == .failed }
 
@@ -91,7 +94,10 @@ final class RecordingController {
 
     func stop(reason: String = "userPaused", failed: Bool = false, completion: (() -> Void)? = nil) {
         if let completion { stopCompletions.append(completion) }
-        if phase == .stopping { return }
+        if phase == .stopping {
+            if reason != "userPaused" || failed { notifySavedAfterStop = false }
+            return
+        }
         attempt = nil
         system.stop()
         microphone.stop()
@@ -103,6 +109,7 @@ final class RecordingController {
             return
         }
         phase = .stopping
+        notifySavedAfterStop = reason == "userPaused" && !failed
         onChange?()
         pipeline.finish(status: failed ? .failed : .completed, reason: reason) { [weak self] result in
             Task { @MainActor in
@@ -119,8 +126,13 @@ final class RecordingController {
                     self.phase = .failed
                     self.onError?(message())
                 }
+                let notifySaved = self.notifySavedAfterStop
+                self.notifySavedAfterStop = false
                 self.onChange?()
                 self.completeStop()
+                if case .success(let directory) = result, notifySaved {
+                    self.onSaved?(directory)
+                }
             }
         }
     }

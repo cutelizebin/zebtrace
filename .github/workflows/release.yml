@@ -139,7 +139,12 @@ jobs:
             printf '%s\n\n' 'Universal build for Apple silicon and Intel Macs, signed with Developer ID and notarized by Apple.' > "$BODY_FILE"
           fi
           printf '%s\n\n' 'Open the DMG and drag ZebTrace.app into Applications, or extract the ZIP. No Homebrew, Swift, or Xcode is required to run it. Microphone and system audio permissions are requested when you start recording.' >> "$BODY_FILE"
-          printf '%s\n' 'SHA256SUMS covers the downloadable archives and PACKAGE-INFO.txt. This release remains a draft for maintainer review.' >> "$BODY_FILE"
+          VERSION_NOTES="docs/releases/${RELEASE_TAG#v}.md"
+          if [[ -f "$VERSION_NOTES" ]]; then
+            cat "$VERSION_NOTES" >> "$BODY_FILE"
+            printf '\n\n' >> "$BODY_FILE"
+          fi
+          printf '%s\n' 'SHA256SUMS covers the downloadable archives and PACKAGE-INFO.txt.' >> "$BODY_FILE"
           gh release create "$RELEASE_TAG" "$PACKAGE_DIRECTORY"/*.zip "$PACKAGE_DIRECTORY"/*.dmg \
             "$PACKAGE_DIRECTORY/SHA256SUMS" "$PACKAGE_DIRECTORY/PACKAGE-INFO.txt" \
             --draft --verify-tag --title "$TITLE" --notes-file "$BODY_FILE" "${EXTRA_ARGUMENTS[@]}"

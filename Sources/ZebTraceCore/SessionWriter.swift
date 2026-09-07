@@ -35,19 +35,12 @@ public final class SessionWriter {
         guard chunkDuration.isFinite, chunkDuration > 0 else { throw RecordingError.invalidAudio }
         self.chunkDuration = chunkDuration
         let id = UUID()
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        let day = formatter.string(from: startedAt)
-        formatter.dateFormat = "HH-mm-ss"
-        directory = root.appendingPathComponent(day, isDirectory: true)
-            .appendingPathComponent("\(formatter.string(from: startedAt))-\(id.uuidString.lowercased())", isDirectory: true)
+        directory = try SessionDirectory.create(in: root, startedAt: startedAt)
         manifest = SessionManifest(id: id, startedAt: startedAt, updatedAt: startedAt,
                                    status: .recording, chunkDurationSeconds: chunkDuration,
                                    hostTimeOrigin: hostTimeOrigin,
-                                   hostClockTicksPerSecond: 1 / AVAudioTime.seconds(forHostTime: 1), chunks: [])
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                                                attributes: [.posixPermissions: 0o700])
+                                   hostClockTicksPerSecond: 1 / AVAudioTime.seconds(forHostTime: 1), chunks: [],
+                                   directoryName: directory.lastPathComponent)
         try checkpoint()
     }
 
@@ -182,7 +175,9 @@ public final class SessionWriter {
                 let sessions = try manager.contentsOfDirectory(at: day, includingPropertiesForKeys: directoryKeys,
                                                                options: [.skipsHiddenFiles])
                 for session in sessions {
-                    guard let id = recoverySessionID(from: session.lastPathComponent) else { continue }
+                    let name = session.lastPathComponent
+                    let legacyID = SessionDirectory.legacyID(from: name)
+                    guard legacyID != nil || SessionDirectory.isTimestampName(name, day: dayName) else { continue }
                     do {
                         guard try isRecoveryDirectory(session) else { continue }
                         let file = session.appendingPathComponent("session.json")
@@ -190,8 +185,12 @@ public final class SessionWriter {
                         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
                         guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
                         var manifest = try decoder.decode(SessionManifest.self, from: Data(contentsOf: file))
-                        guard manifest.schemaVersion == 1, manifest.id == id,
-                              manifest.status == .recording else { continue }
+                        guard manifest.schemaVersion == 1, manifest.status == .recording else { continue }
+                        if let legacyID {
+                            guard manifest.id == legacyID else { continue }
+                        } else {
+                            guard manifest.directoryName == name else { continue }
+                        }
                         manifest.status = .interrupted
                         manifest.endedAt = manifest.updatedAt
                         manifest.endReason = "appInterrupted"
@@ -217,15 +216,4 @@ public final class SessionWriter {
         return values.isDirectory == true && values.isSymbolicLink != true && values.isPackage != true
     }
 
-    private static func recoverySessionID(from name: String) -> UUID? {
-        guard name.count == 45 else { return nil }
-        let time = name.prefix(8).split(separator: "-", omittingEmptySubsequences: false)
-        guard time.count == 3,
-              time.allSatisfy({ $0.count == 2 && $0.utf8.allSatisfy { $0 >= 48 && $0 <= 57 } }),
-              let hour = Int(time[0]), (0...23).contains(hour),
-              let minute = Int(time[1]), (0...59).contains(minute),
-              let second = Int(time[2]), (0...59).contains(second),
-              name[name.index(name.startIndex, offsetBy: 8)] == "-" else { return nil }
-        return UUID(uuidString: String(name.suffix(36)))
-    }
 }

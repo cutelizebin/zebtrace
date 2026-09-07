@@ -91,16 +91,19 @@ final class LocalizationTests: XCTestCase {
                        "Read audio device failed (Core Audio status -50).")
     }
 
-    func testBothLanguagesContainMatchingNonemptyKeysAndFormatSpecifiers() throws {
+    func testEverySupportedLanguageContainsMatchingNonemptyKeysAndFormatSpecifiers() throws {
         let english = try translations(for: .english)
-        let chinese = try translations(for: .chinese)
         XCTAssertFalse(english.isEmpty)
-        XCTAssertEqual(Set(english.keys), Set(chinese.keys))
-        for (key, englishValue) in english {
-            let chineseValue = try XCTUnwrap(chinese[key], "Missing Chinese translation: \(key)")
-            XCTAssertFalse(englishValue.isEmpty, key)
-            XCTAssertFalse(chineseValue.isEmpty, key)
-            XCTAssertEqual(try formatSpecifiers(in: englishValue), try formatSpecifiers(in: chineseValue), key)
+        for language in AppLanguage.allCases where language != .system {
+            let localized = try translations(for: language)
+            XCTAssertEqual(Set(english.keys), Set(localized.keys), language.rawValue)
+            for (key, englishValue) in english {
+                let context = "\(language.rawValue): \(key)"
+                let value = try XCTUnwrap(localized[key], "Missing translation: \(context)")
+                XCTAssertFalse(englishValue.isEmpty, key)
+                XCTAssertFalse(value.isEmpty, context)
+                XCTAssertEqual(try formatSpecifiers(in: englishValue), try formatSpecifiers(in: value), context)
+            }
         }
     }
 

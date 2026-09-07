@@ -28,6 +28,9 @@ public struct SessionManifest: Codable {
     public var hostTimeOrigin: UInt64
     public var hostClockTicksPerSecond: Double
     public var chunks: [AudioChunk]
+    /// Leaf name at creation, independent of later system time-zone changes.
+    /// Absent in legacy sessions, whose folder names contain their UUID instead.
+    public var directoryName: String? = nil
 }
 
 public enum RecordingError: LocalizedError {
